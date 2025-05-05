@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { nanoid } from 'nanoid';
+import { ProductFilters } from './ProductFilters';
+import { ProductList } from './ProductList';
 
 function FindClothes() {
   const [files, setFiles] = useState([]);
@@ -12,8 +14,11 @@ function FindClothes() {
   const [products, setProducts] = useState([]);
   const [showHome, setShowHome] = useState(true);
   const [showVerificationForm, setShowVerificationForm] = useState(false);
+  const [apiStatus, setApiStatus] = useState({ loading: false, error: null });
   const [userPreferences, setUserPreferences] = useState({
     gender: '',
+    style: 'any',
+    priceRange: 'any',
     items: []
   });
 
@@ -23,9 +28,35 @@ function FindClothes() {
     "http://localhost:8080/upload-photo/" // Fallback to local development if running
   ];
 
+  // Clothing taxonomy - for better categorization
+  const clothingCategories = {
+    tops: ["short sleeve top", "long sleeve top", "t-shirt", "shirt", "blouse", "sweater", "hoodie", "vest"],
+    bottoms: ["shorts", "trousers", "skirt", "jeans", "pants"],
+    outerwear: ["short sleeve outwear", "long sleeve outwear", "jacket", "coat"],
+    dresses: ["short sleeve dress", "long sleeve dress", "vest dress", "sling dress"],
+    others: ["sling", "suit"]
+  };
+
+  // Map to convert model classes to user-friendly names
+  const classNameMapping = {
+    "short sleeve top": "Short Sleeve Shirt/Top",
+    "long sleeve top": "Long Sleeve Shirt/Top",
+    "short sleeve outwear": "Light Jacket",
+    "long sleeve outwear": "Jacket/Coat",
+    "vest": "Vest/Sleeveless Top",
+    "shorts": "Shorts",
+    "trousers": "Trousers/Pants",
+    "skirt": "Skirt",
+    "short sleeve dress": "Short Sleeve Dress",
+    "long sleeve dress": "Long Sleeve Dress",
+    "vest dress": "Sleeveless Dress",
+    "sling dress": "Sling Dress",
+    "sling": "Sling/Strap Top"
+  };
+
   // Maximum number of files allowed
   const MAX_FILES = 5;
-  const MIN_FILES = 2;
+  const MIN_FILES = 1; // Changed to 1 to allow single outfit analysis
 
   // Handle file change for multiple image uploads
   const handleFileChange = (e) => {
@@ -67,7 +98,7 @@ function FindClothes() {
   // Process each image and analyze styles
   const processImages = async () => {
     if (files.length < MIN_FILES) {
-      setError(`Please upload at least ${MIN_FILES} images to analyze your style.`);
+      setError(`Please upload at least ${MIN_FILES} image to analyze your style.`);
       return;
     }
 
@@ -115,9 +146,9 @@ function FindClothes() {
         
         // Check if response includes detected clothing
         if (data.text && !data.text.includes("No outfit detected") && !data.text.includes("Multiple outfits detected")) {
-          const parseOutfit = parseDetectionText(data.text);
-          if (parseOutfit) {
-            detections.push(parseOutfit);
+          const parsedOutfit = parseDetectionText(data.text);
+          if (parsedOutfit) {
+            detections.push(parsedOutfit);
           }
         }
       } catch (error) {
@@ -131,20 +162,22 @@ function FindClothes() {
       return;
     }
     
-    // Analyze common styles
+    // Extract all unique clothing items from all detections
     setAnalyzing(true);
     try {
+      const allItems = extractAllClothingItems(detections);
+      setDetectedItems(allItems);
+      
+      // Analyze common styles
       const styleAnalysis = analyzeStyles(detections);
       setResults(styleAnalysis);
-      
-      // Prepare detected items for verification form
-      const items = prepareDetectedItems(styleAnalysis);
-      setDetectedItems(items);
       
       // Initialize user preferences with detected items
       setUserPreferences({
         gender: '', // Will be selected by user
-        items: items
+        style: 'any',
+        priceRange: 'any',
+        items: allItems
       });
       
       // Show verification form
@@ -157,38 +190,78 @@ function FindClothes() {
       setAnalyzing(false);
     }
   };
-
-  // Prepare detected items for the verification form
-  const prepareDetectedItems = (styleAnalysis) => {
-    return styleAnalysis.types.map((type, index) => {
-      // Assign most common color to each type for initial state
-      const color = styleAnalysis.colors[index % styleAnalysis.colors.length];
-      
-      return {
-        id: nanoid(),
-        type: type,
-        color: color,
-        enabled: true // By default, all detected items are enabled
-      };
+  
+  // Extract all unique clothing items from detections
+  const extractAllClothingItems = (detections) => {
+    // Create a map to store unique items by type
+    const uniqueItems = new Map();
+    
+    detections.forEach(detection => {
+      detection.forEach(item => {
+        const itemType = item.type;
+        const itemColor = item.colors[0] || 'neutral';
+        
+        // Create a unique key for this item type
+        const key = `${itemType}`;
+        
+        if (!uniqueItems.has(key)) {
+          uniqueItems.set(key, {
+            id: nanoid(),
+            type: itemType,
+            color: itemColor,
+            enabled: true,
+            category: getCategoryForType(itemType),
+            displayName: classNameMapping[itemType] || itemType
+          });
+        }
+      });
     });
+    
+    return Array.from(uniqueItems.values());
+  };
+  
+  // Get category for a clothing type
+  const getCategoryForType = (type) => {
+    for (const [category, types] of Object.entries(clothingCategories)) {
+      if (types.includes(type)) {
+        return category;
+      }
+    }
+    return 'others';
   };
 
   // Parse the detection text to extract clothing items and their attributes
   const parseDetectionText = (text) => {
     try {
-      // This is a simple parser - you might need to adjust based on your API response format
+      // Extract from structured data in format:
+      // - **Rating**: 7/10
+      // - **Color Harmony**: ...
+      // etc.
+      
       const parts = text.split('- **');
       const items = [];
       
-      // Extract clothing items mentioned in the text
-      const clothingKeywords = ['top', 'bottom', 'dress', 'outwear', 'jacket', 'shirt', 'blouse', 'skirt', 'pants', 'trousers', 'sleeve', 't-shirt', 'sweater', 'hoodie', 'coat', 'suit'];
-      const colorKeywords = ['red', 'blue', 'green', 'black', 'white', 'yellow', 'purple', 'pink', 'brown', 'gray', 'grey', 'orange', 'navy', 'cream', 'beige', 'tan', 'gold', 'silver', 'khaki', 'olive', 'maroon', 'teal', 'turquoise'];
+      // List of detected clothing items from our model
+      const clothingKeywords = [
+        'short sleeve top', 'long sleeve top', 'short sleeve outwear', 
+        'long sleeve outwear', 'vest', 'shorts', 'trousers', 'skirt', 
+        'short sleeve dress', 'long sleeve dress', 'vest dress', 'sling dress', 'sling',
+        't-shirt', 'shirt', 'blouse', 'top', 'pants', 'jeans', 'jacket', 'coat'
+      ];
       
-      // Look for clothing items and colors in each part
-      for (const part of parts) {
-        if (!part) continue;
+      const colorKeywords = [
+        'red', 'blue', 'green', 'black', 'white', 'yellow', 'purple', 
+        'pink', 'brown', 'gray', 'grey', 'orange', 'navy', 'cream', 'beige', 
+        'tan', 'gold', 'silver', 'khaki', 'olive', 'maroon', 'teal', 'turquoise'
+      ];
+      
+      // Look for clothing items in the text
+      parts.forEach(part => {
+        if (!part) return;
         
         const lowerPart = part.toLowerCase();
+        
+        // First check exact matches from our model's class names
         for (const clothingItem of clothingKeywords) {
           if (lowerPart.includes(clothingItem)) {
             // Find associated colors
@@ -198,11 +271,9 @@ function FindClothes() {
               type: clothingItem,
               colors: colors.length > 0 ? colors : ['neutral']
             });
-            
-            break; // Found a clothing item, move to next part
           }
         }
-      }
+      });
       
       return items.length > 0 ? items : null;
     } catch (error) {
@@ -235,27 +306,20 @@ function FindClothes() {
       });
     });
     
-    // Find most common types and colors
-    const commonTypes = Object.entries(typeFrequency)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(entry => entry[0]);
+    // Find all detected types and colors
+    const allTypes = Object.keys(typeFrequency);
+    const allColors = Object.keys(colorFrequency);
     
-    const commonColors = Object.entries(colorFrequency)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(entry => entry[0]);
-    
-    if (commonTypes.length === 0 || commonColors.length === 0) {
-      throw new Error("Couldn't identify common styles");
+    if (allTypes.length === 0 || allColors.length === 0) {
+      throw new Error("Couldn't identify styles");
     }
     
     return {
-      types: commonTypes,
-      colors: commonColors,
+      types: allTypes,
+      colors: allColors,
       // Create search queries by combining types and colors
-      searchQueries: commonTypes.flatMap(type => 
-        commonColors.map(color => `${color} ${type}`)
+      searchQueries: allTypes.flatMap(type => 
+        allColors.map(color => `${color} ${type}`)
       )
     };
   };
@@ -293,9 +357,11 @@ function FindClothes() {
   const addCustomItem = () => {
     const newItem = {
       id: nanoid(),
-      type: 'shirt', // Default value
+      type: 'short sleeve top', // Default value
       color: 'black', // Default value
-      enabled: true
+      enabled: true,
+      category: 'tops',
+      displayName: classNameMapping['short sleeve top'] || 'Short Sleeve Top'
     };
     
     setUserPreferences(prev => ({
@@ -331,15 +397,16 @@ function FindClothes() {
     
     try {
       // Generate search queries based on user preferences
-      const searchQueries = enabledItems.map(item => `${item.color} ${item.type} ${userPreferences.gender}`);
+      const searchQueries = enabledItems.map(item => ({
+        type: item.type,
+        color: item.color,
+        gender: userPreferences.gender,
+        priceRange: userPreferences.priceRange,
+        style: userPreferences.style
+      }));
       
-      // Fetch products with filtered preferences
-      await fetchProducts({
-        types: enabledItems.map(item => item.type),
-        colors: enabledItems.map(item => item.color),
-        searchQueries: searchQueries,
-        gender: userPreferences.gender
-      });
+      // Fetch real products with filtered preferences
+      await fetchRealProducts(searchQueries);
       
       // Hide verification form and show results
       setShowVerificationForm(false);
@@ -351,45 +418,81 @@ function FindClothes() {
     }
   };
 
-  // Fetch real product data from Amazon.in
-  const fetchProducts = async (styleAnalysis) => {
+  // Fetch real product data from Amazon via RapidAPI
+  const fetchRealProducts = async (queries) => {
+    setApiStatus({ loading: true, error: null });
+    
     try {
-      // For demo purposes, we'll create enhanced mock product data with gender filtering
-      // In a production app, you would integrate with an actual Amazon API or web scraping service
-      const mockProducts = createGenderSpecificProducts(styleAnalysis);
-      setProducts(mockProducts);
+      const allProducts = [];
+      
+      // Process each query (clothing item) one at a time
+      for (const query of queries) {
+        try {
+          const searchTerm = `${query.color} ${query.type} ${query.gender}`;
+          
+          // Make request to your backend to proxy the API call
+          const response = await fetch('/api/amazon-products', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              searchTerm,
+              gender: query.gender,
+              priceRange: query.priceRange,
+              style: query.style
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to fetch products from API');
+          }
+          
+          const data = await response.json();
+          
+          // Process and add the products
+          if (data && data.products && data.products.length > 0) {
+            // Add metadata to each product
+            const processedProducts = data.products.map(product => ({
+              ...product,
+              query: {
+                type: query.type,
+                color: query.color,
+                gender: query.gender
+              }
+            }));
+            
+            allProducts.push(...processedProducts);
+          }
+        } catch (error) {
+          console.error(`Error fetching products for ${query.type}:`, error);
+          // Continue with other queries even if one fails
+        }
+      }
+      
+      // If we couldn't get any real products, fall back to mock products
+      if (allProducts.length === 0) {
+        const mockProducts = createMockProducts(queries);
+        setProducts(mockProducts);
+        setApiStatus({ loading: false, error: "Couldn't retrieve real products, showing mock data instead." });
+      } else {
+        setProducts(allProducts);
+        setApiStatus({ loading: false, error: null });
+      }
     } catch (error) {
-      console.error("Error fetching products:", error);
-      setError("Failed to fetch product recommendations. Please try again.");
+      console.error("Error in product fetching:", error);
+      // Fallback to mock products
+      const mockProducts = createMockProducts(queries);
+      setProducts(mockProducts);
+      setApiStatus({ loading: false, error: "API request failed, showing mock products instead." });
     }
   };
 
-  // Create mock Amazon.in products with realistic images, names and prices - with gender specificity
-  const createGenderSpecificProducts = (styleAnalysis) => {
+  // Create mock product data if API fails
+  const createMockProducts = (queries) => {
     const mockProducts = [];
-    const gender = styleAnalysis.gender;
     
-    // Product categories based on clothing types
-    const categories = {
-      'top': 'shirts+tops+tshirts',
-      'bottom': 'pants+jeans+trousers',
-      'dress': 'dresses',
-      'outwear': 'jackets+coats',
-      'jacket': 'jackets',
-      'shirt': 'shirts',
-      'blouse': 'blouses',
-      'skirt': 'skirts',
-      'pants': 'pants',
-      'trousers': 'trousers',
-      'sleeve': 'sleeves',
-      't-shirt': 't-shirts',
-      'sweater': 'sweaters',
-      'hoodie': 'hoodies',
-      'coat': 'coats',
-      'suit': 'suits'
-    };
-    
-    // Gender-specific Indian brand names for more authentic results
+    // Indian brand names by gender
     const menBrandNames = [
       'Allen Solly', 'Van Heusen', 'Louis Philippe', 'Peter England',
       'Raymond', 'Park Avenue', 'Manyavar', 'Indian Terrain', 'Wrogn',
@@ -408,50 +511,50 @@ function FindClothes() {
       'Puma', 'Reebok'
     ];
     
-    let brandNames = [];
-    
-    if (gender === 'men') {
-      brandNames = [...menBrandNames, ...unisexBrandNames];
-    } else if (gender === 'women') {
-      brandNames = [...womenBrandNames, ...unisexBrandNames];
-    } else {
-      // For unisex, use a mix of all brands
-      brandNames = [...menBrandNames, ...womenBrandNames, ...unisexBrandNames];
-    }
-    
-    styleAnalysis.searchQueries.forEach((query, index) => {
-      // Create 2-3 specific products for each query
-      const numProducts = Math.floor(Math.random() * 2) + 2;
+    queries.forEach(query => {
+      let brandNames = [];
       
-      // Extract the color, type and gender
-      const parts = query.split(' ');
-      const color = parts[0];
-      const type = parts[1];
-      const queryGender = parts[2] || gender;
+      if (query.gender === 'men') {
+        brandNames = [...menBrandNames, ...unisexBrandNames];
+      } else if (query.gender === 'women') {
+        brandNames = [...womenBrandNames, ...unisexBrandNames];
+      } else {
+        brandNames = [...menBrandNames, ...womenBrandNames, ...unisexBrandNames];
+      }
       
-      // Get appropriate category for the search
-      const category = categories[type] || type;
+      // Create 2-4 products for each query
+      const numProducts = Math.floor(Math.random() * 3) + 2;
       
       for (let i = 0; i < numProducts; i++) {
         const brand = brandNames[Math.floor(Math.random() * brandNames.length)];
-        const price = Math.floor(Math.random() * 2000) + 499; // Price in INR
-
-        // Generate specific product IDs to simulate specific products rather than search results
+        let price;
+        
+        // Set price based on priceRange
+        if (query.priceRange === 'budget') {
+          price = Math.floor(Math.random() * 500) + 299;
+        } else if (query.priceRange === 'premium') {
+          price = Math.floor(Math.random() * 3000) + 2000;
+        } else {
+          price = Math.floor(Math.random() * 1500) + 499;
+        }
+        
+        // Generate product ID
         const productId = nanoid(8);
         
-        // Create a more realistic product title
-        const genderLabel = queryGender === 'men' ? 'Men' : queryGender === 'women' ? 'Women' : 'Unisex';
+        // Create product title
+        const genderLabel = query.gender === 'men' ? 'Men' : query.gender === 'women' ? 'Women' : 'Unisex';
+        const stylePrefix = query.style !== 'any' ? `${query.style} ` : '';
+        
         const titles = [
-          `${brand} ${color.charAt(0).toUpperCase() + color.slice(1)} ${type} for ${genderLabel}`,
-          `${brand} Premium ${color} ${type} - ${genderLabel}`,
-          `${brand} Signature ${color} ${type} Collection (${genderLabel})`,
-          `${brand} Designer ${color} ${type} - ${genderLabel} Fashion`,
-          `${brand} Essential ${color} ${type} - ${genderLabel}'s Wear`
+          `${brand} ${stylePrefix}${query.color.charAt(0).toUpperCase() + query.color.slice(1)} ${query.type} for ${genderLabel}`,
+          `${brand} Premium ${query.color} ${query.type} - ${genderLabel}`,
+          `${brand} Signature ${query.color} ${query.type} Collection (${genderLabel})`,
+          `${brand} Designer ${query.color} ${query.type} - ${genderLabel} Fashion`
         ];
         
         const title = titles[Math.floor(Math.random() * titles.length)];
         
-        // For detailed product attributes to make each product unique
+        // Product attributes
         const attributes = [
           `Size: ${['S', 'M', 'L', 'XL', 'XXL'][Math.floor(Math.random() * 5)]}`,
           `Material: ${['Cotton', 'Linen', 'Polyester', 'Cotton Blend', 'Silk'][Math.floor(Math.random() * 5)]}`,
@@ -459,7 +562,7 @@ function FindClothes() {
           `Fit: ${['Regular', 'Slim', 'Relaxed', 'Tailored', 'Oversized'][Math.floor(Math.random() * 5)]}`
         ];
         
-        // Generate a more realistic image path - in a real app, this would be an actual product image URL
+        // Image dimensions
         const imageWidth = 300;
         const imageHeight = 400;
         
@@ -467,16 +570,20 @@ function FindClothes() {
           id: productId,
           title: title,
           brand: brand,
-          description: `Premium quality ${color} ${type} perfect for all occasions. Made with high-quality fabric for comfort and style.`,
+          description: `Premium quality ${query.color} ${query.type} perfect for all occasions.`,
           attributes: attributes,
           price: `₹${price.toLocaleString('en-IN')}`,
-          rating: (Math.random() * 2 + 3).toFixed(1), // Rating between 3.0 and 5.0
-          reviews: Math.floor(Math.random() * 500) + 10, // Number of reviews
-          image: `/api/placeholder/${imageWidth}/${imageHeight}`, // Placeholder image
-          link: `https://www.amazon.in/dp/${productId}`, // Specific product link with generated ID
-          color: color,
-          type: type,
-          gender: queryGender
+          rating: (Math.random() * 2 + 3).toFixed(1),
+          reviews: Math.floor(Math.random() * 1000) + 10,
+          image: `/api/placeholder/${imageWidth}/${imageHeight}`,
+          link: `https://www.amazon.in/dp/${productId}`,
+          query: {
+            type: query.type,
+            color: query.color,
+            gender: query.gender,
+            style: query.style,
+            priceRange: query.priceRange
+          }
         });
       }
     });
@@ -491,23 +598,26 @@ function FindClothes() {
     setResults(null);
     setProducts([]);
     setError(null);
+    setApiStatus({ loading: false, error: null });
     setShowVerificationForm(false);
     setUserPreferences({
       gender: '',
+      style: 'any',
+      priceRange: 'any',
       items: []
     });
   };
 
-  // Render the clothing type options
+  // Render clothing type options grouped by category
   const renderClothingTypeOptions = () => {
-    const clothingTypes = [
-      'shirt', 'top', 't-shirt', 'blouse', 'sweater', 'hoodie',
-      'pants', 'trousers', 'jeans', 'skirt', 'shorts',
-      'jacket', 'coat', 'outwear', 'dress', 'suit'
-    ];
-    
-    return clothingTypes.map(type => (
-      <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+    return Object.entries(clothingCategories).map(([category, types]) => (
+      <optgroup key={category} label={category.charAt(0).toUpperCase() + category.slice(1)}>
+        {types.map(type => (
+          <option key={type} value={type}>
+            {classNameMapping[type] || type}
+          </option>
+        ))}
+      </optgroup>
     ));
   };
 
@@ -528,9 +638,9 @@ function FindClothes() {
     return (
       <div className='fc-find-clothes-home'>
         <div className="fc-hero-section">
-          <h1 className='fc-app-title'>Find Your Style</h1>
+          <h1 className='fc-app-title'>DressPro: Find Your Style</h1>
           <p className='fc-app-details'>
-            Upload multiple outfit photos and we'll analyze your style preferences to recommend matching products from top Indian brands.
+            Upload outfit photos and we'll analyze your style preferences to recommend matching products from top brands on Amazon.in.
           </p>
           <button className='fc-start-btn' onClick={() => setShowHome(false)}>Get Started</button>
         </div>
@@ -545,7 +655,7 @@ function FindClothes() {
       {!loading && !results && !showVerificationForm && (
         <div className="fc-upload-section">
           <p className="fc-instructions">
-            Upload 2-5 photos of outfits you like to help us understand your style preferences.
+            Upload 1-5 photos of outfits you like to help us understand your style preferences.
           </p>
           
           <div className="fc-file-upload-area">
@@ -634,6 +744,7 @@ function FindClothes() {
                 value={userPreferences.gender}
                 onChange={handlePreferenceChange}
                 className="fc-select"
+                required
               >
                 <option value="">-- Select Gender --</option>
                 <option value="men">Men</option>
@@ -642,9 +753,44 @@ function FindClothes() {
               </select>
             </div>
             
+            <div className="fc-form-group">
+              <label htmlFor="style-select">Style Preference:</label>
+              <select 
+                id="style-select"
+                name="style"
+                value={userPreferences.style}
+                onChange={handlePreferenceChange}
+                className="fc-select"
+              >
+                <option value="any">Any Style</option>
+                <option value="casual">Casual</option>
+                <option value="formal">Formal</option>
+                <option value="business">Business</option>
+                <option value="party">Party</option>
+                <option value="ethnic">Ethnic</option>
+                <option value="sports">Sports/Athletic</option>
+              </select>
+            </div>
+            
+            <div className="fc-form-group">
+              <label htmlFor="price-select">Price Range:</label>
+              <select 
+                id="price-select"
+                name="priceRange"
+                value={userPreferences.priceRange}
+                onChange={handlePreferenceChange}
+                className="fc-select"
+              >
+                <option value="any">Any Price</option>
+                <option value="budget">Budget (Under ₹1000)</option>
+                <option value="mid">Mid-Range (₹1000-₹2500)</option>
+                <option value="premium">Premium (Above ₹2500)</option>
+              </select>
+            </div>
+            
             <div className="fc-detected-items">
               <h4>Detected Items:</h4>
-              {userPreferences.items.map((item, index) => (
+              {userPreferences.items.map((item) => (
                 <div key={item.id} className="fc-item-card">
                   <div className="fc-item-toggle">
                     <input
@@ -668,122 +814,4 @@ function FindClothes() {
                       </select>
                     </div>
                     
-                    <div className="fc-form-group">
-                      <label>Color:</label>
-                      <select 
-                        value={item.color}
-                        onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
-                        className="fc-select fc-select-sm"
-                      >
-                        {renderColorOptions()}
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <button 
-                    className="fc-remove-item-btn"
-                    onClick={() => removeItem(item.id)}
-                    aria-label="Remove item"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              
-              <button className="fc-add-item-btn" onClick={addCustomItem}>
-                + Add Another Item
-              </button>
-            </div>
-            
-            <div className="fc-action-buttons">
-              <button className="fc-analyze-btn" onClick={submitPreferences}>
-                Find Products
-              </button>
-              <button className="fc-back-btn" onClick={resetState}>
-                Start Over
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {results && !loading && !showVerificationForm && (
-        <div className="fc-results-section">
-          <div className="fc-style-analysis">
-            <h3>Your Style Profile</h3>
-            <div className="fc-gender-tag">
-              <span className="fc-style-tag fc-gender">{userPreferences.gender.charAt(0).toUpperCase() + userPreferences.gender.slice(1)}</span>
-            </div>
-            <div className="fc-style-tags">
-              {userPreferences.items.filter(item => item.enabled).map(item => (
-                <span key={item.id} className="fc-style-tag">
-                  {item.color} {item.type}
-                </span>
-              ))}
-            </div>
-            <p className="fc-analysis-description">
-              Based on your selections, here are personalized product recommendations:
-            </p>
-          </div>
-          
-          <div className="fc-products-container">
-            <h3>Recommended Products</h3>
-            
-            {products.length > 0 ? (
-              <div className="fc-products-grid">
-                {products.map(product => (
-                  <a 
-                    key={product.id} 
-                    href={product.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="fc-product-card"
-                  >
-                    <div className="fc-product-image">
-                      <img src={product.image} alt={product.title} />
-                    </div>
-                    <div className="fc-product-details">
-                      <h4 className="fc-product-title">{product.title}</h4>
-                      <div className="fc-product-brand">{product.brand}</div>
-                      <div className="fc-product-attributes">
-                        {product.attributes.map((attr, idx) => (
-                          <span key={idx} className="fc-attribute">{attr}</span>
-                        ))}
-                      </div>
-                      <div className="fc-product-price">{product.price}</div>
-                      <div className="fc-product-rating">
-                        <span className="fc-stars">{'★'.repeat(Math.floor(parseFloat(product.rating)))}{'☆'.repeat(5 - Math.floor(parseFloat(product.rating)))}</span>
-                        <span className="fc-rating-count">({product.reviews})</span>
-                      </div>
-                      <div className="fc-product-tags">
-                        <span className="fc-product-tag fc-tag-color">{product.color}</span>
-                        <span className="fc-product-tag fc-tag-type">{product.type}</span>
-                        <span className="fc-product-tag fc-tag-gender">{product.gender}</span>
-                      </div>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <p className="fc-no-products">No products found matching your style.</p>
-            )}
-          </div>
-          
-          <div className="fc-action-buttons">
-            <button className="fc-back-to-prefs-btn" onClick={() => setShowVerificationForm(true)}>
-              Adjust Preferences
-            </button>
-            <button className="fc-analyze-btn" onClick={resetState}>
-              Start Over
-            </button>
-            <button className="fc-back-btn" onClick={() => setShowHome(true)}>
-              Back to Home
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default FindClothes;
+                    <div className="fc-
