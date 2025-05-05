@@ -8,8 +8,14 @@ function FindClothes() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
+  const [detectedItems, setDetectedItems] = useState([]);
   const [products, setProducts] = useState([]);
   const [showHome, setShowHome] = useState(true);
+  const [showVerificationForm, setShowVerificationForm] = useState(false);
+  const [userPreferences, setUserPreferences] = useState({
+    gender: '',
+    items: []
+  });
 
   // API endpoints - we'll try multiple in case the primary is down
   const apiEndpoints = [
@@ -131,8 +137,18 @@ function FindClothes() {
       const styleAnalysis = analyzeStyles(detections);
       setResults(styleAnalysis);
       
-      // Fetch products based on analysis
-      await fetchProducts(styleAnalysis);
+      // Prepare detected items for verification form
+      const items = prepareDetectedItems(styleAnalysis);
+      setDetectedItems(items);
+      
+      // Initialize user preferences with detected items
+      setUserPreferences({
+        gender: '', // Will be selected by user
+        items: items
+      });
+      
+      // Show verification form
+      setShowVerificationForm(true);
     } catch (err) {
       console.error("Error analyzing styles:", err);
       setError("Failed to analyze your style. Please try again.");
@@ -140,6 +156,21 @@ function FindClothes() {
       setLoading(false);
       setAnalyzing(false);
     }
+  };
+
+  // Prepare detected items for the verification form
+  const prepareDetectedItems = (styleAnalysis) => {
+    return styleAnalysis.types.map((type, index) => {
+      // Assign most common color to each type for initial state
+      const color = styleAnalysis.colors[index % styleAnalysis.colors.length];
+      
+      return {
+        id: nanoid(),
+        type: type,
+        color: color,
+        enabled: true // By default, all detected items are enabled
+      };
+    });
   };
 
   // Parse the detection text to extract clothing items and their attributes
@@ -150,8 +181,8 @@ function FindClothes() {
       const items = [];
       
       // Extract clothing items mentioned in the text
-      const clothingKeywords = ['top', 'bottom', 'dress', 'outwear', 'jacket', 'shirt', 'blouse', 'skirt', 'pants', 'trousers', 'sleeve'];
-      const colorKeywords = ['red', 'blue', 'green', 'black', 'white', 'yellow', 'purple', 'pink', 'brown', 'gray', 'grey', 'orange', 'navy', 'cream', 'beige', 'tan', 'gold', 'silver'];
+      const clothingKeywords = ['top', 'bottom', 'dress', 'outwear', 'jacket', 'shirt', 'blouse', 'skirt', 'pants', 'trousers', 'sleeve', 't-shirt', 'sweater', 'hoodie', 'coat', 'suit'];
+      const colorKeywords = ['red', 'blue', 'green', 'black', 'white', 'yellow', 'purple', 'pink', 'brown', 'gray', 'grey', 'orange', 'navy', 'cream', 'beige', 'tan', 'gold', 'silver', 'khaki', 'olive', 'maroon', 'teal', 'turquoise'];
       
       // Look for clothing items and colors in each part
       for (const part of parts) {
@@ -229,12 +260,103 @@ function FindClothes() {
     };
   };
 
+  // Handle changes in the verification form
+  const handlePreferenceChange = (e) => {
+    const { name, value } = e.target;
+    setUserPreferences({
+      ...userPreferences,
+      [name]: value
+    });
+  };
+
+  // Handle toggle for clothing items
+  const toggleItemEnabled = (id) => {
+    setUserPreferences(prev => ({
+      ...prev,
+      items: prev.items.map(item => 
+        item.id === id ? { ...item, enabled: !item.enabled } : item
+      )
+    }));
+  };
+
+  // Handle changes in item type or color
+  const handleItemChange = (id, field, value) => {
+    setUserPreferences(prev => ({
+      ...prev,
+      items: prev.items.map(item => 
+        item.id === id ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  // Add a new custom item
+  const addCustomItem = () => {
+    const newItem = {
+      id: nanoid(),
+      type: 'shirt', // Default value
+      color: 'black', // Default value
+      enabled: true
+    };
+    
+    setUserPreferences(prev => ({
+      ...prev,
+      items: [...prev.items, newItem]
+    }));
+  };
+
+  // Remove a custom item
+  const removeItem = (id) => {
+    setUserPreferences(prev => ({
+      ...prev,
+      items: prev.items.filter(item => item.id !== id)
+    }));
+  };
+
+  // Submit the verified preferences and fetch products
+  const submitPreferences = async () => {
+    if (!userPreferences.gender) {
+      setError("Please select a gender preference for more accurate recommendations.");
+      return;
+    }
+    
+    const enabledItems = userPreferences.items.filter(item => item.enabled);
+    
+    if (enabledItems.length === 0) {
+      setError("Please enable at least one clothing item to get recommendations.");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Generate search queries based on user preferences
+      const searchQueries = enabledItems.map(item => `${item.color} ${item.type} ${userPreferences.gender}`);
+      
+      // Fetch products with filtered preferences
+      await fetchProducts({
+        types: enabledItems.map(item => item.type),
+        colors: enabledItems.map(item => item.color),
+        searchQueries: searchQueries,
+        gender: userPreferences.gender
+      });
+      
+      // Hide verification form and show results
+      setShowVerificationForm(false);
+    } catch (err) {
+      console.error("Error fetching products:", err);
+      setError("Failed to fetch product recommendations. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Fetch real product data from Amazon.in
   const fetchProducts = async (styleAnalysis) => {
     try {
-      // For demo purposes, we'll create enhanced mock product data
+      // For demo purposes, we'll create enhanced mock product data with gender filtering
       // In a production app, you would integrate with an actual Amazon API or web scraping service
-      const mockProducts = createAmazonProducts(styleAnalysis);
+      const mockProducts = createGenderSpecificProducts(styleAnalysis);
       setProducts(mockProducts);
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -242,9 +364,10 @@ function FindClothes() {
     }
   };
 
-  // Create mock Amazon.in products with realistic images, names and prices
-  const createAmazonProducts = (styleAnalysis) => {
+  // Create mock Amazon.in products with realistic images, names and prices - with gender specificity
+  const createGenderSpecificProducts = (styleAnalysis) => {
     const mockProducts = [];
+    const gender = styleAnalysis.gender;
     
     // Product categories based on clothing types
     const categories = {
@@ -258,24 +381,53 @@ function FindClothes() {
       'skirt': 'skirts',
       'pants': 'pants',
       'trousers': 'trousers',
-      'sleeve': 'sleeves'
+      'sleeve': 'sleeves',
+      't-shirt': 't-shirts',
+      'sweater': 'sweaters',
+      'hoodie': 'hoodies',
+      'coat': 'coats',
+      'suit': 'suits'
     };
     
-    // Indian brand names for more authentic results
-    const brandNames = [
+    // Gender-specific Indian brand names for more authentic results
+    const menBrandNames = [
       'Allen Solly', 'Van Heusen', 'Louis Philippe', 'Peter England',
-      'Raymond', 'Park Avenue', 'W for Woman', 'Biba', 'FabIndia',
-      'AND', 'Global Desi', 'Manyavar', 'Zara', 'H&M', 'Westside'
+      'Raymond', 'Park Avenue', 'Manyavar', 'Indian Terrain', 'Wrogn',
+      'U.S. Polo Assn.', 'Flying Machine', 'Rare Rabbit', 'Spykar'
     ];
     
+    const womenBrandNames = [
+      'W for Woman', 'Biba', 'FabIndia', 'AND', 'Global Desi',
+      'Zara', 'H&M', 'Westside', 'Label Ritu Kumar', 'Anita Dongre',
+      'Mango', 'Forever 21', 'Libas', 'Aurelia'
+    ];
+    
+    const unisexBrandNames = [
+      'Levi\'s', 'H&M', 'Zara', 'Marks & Spencer', 'GAP', 
+      'United Colors of Benetton', 'Tommy Hilfiger', 'Adidas', 'Nike',
+      'Puma', 'Reebok'
+    ];
+    
+    let brandNames = [];
+    
+    if (gender === 'men') {
+      brandNames = [...menBrandNames, ...unisexBrandNames];
+    } else if (gender === 'women') {
+      brandNames = [...womenBrandNames, ...unisexBrandNames];
+    } else {
+      // For unisex, use a mix of all brands
+      brandNames = [...menBrandNames, ...womenBrandNames, ...unisexBrandNames];
+    }
+    
     styleAnalysis.searchQueries.forEach((query, index) => {
-      // Create 2-4 products for each query
-      const numProducts = Math.floor(Math.random() * 3) + 2;
+      // Create 2-3 specific products for each query
+      const numProducts = Math.floor(Math.random() * 2) + 2;
       
-      // Extract the color and type
+      // Extract the color, type and gender
       const parts = query.split(' ');
       const color = parts[0];
       const type = parts[1];
+      const queryGender = parts[2] || gender;
       
       // Get appropriate category for the search
       const category = categories[type] || type;
@@ -283,35 +435,48 @@ function FindClothes() {
       for (let i = 0; i < numProducts; i++) {
         const brand = brandNames[Math.floor(Math.random() * brandNames.length)];
         const price = Math.floor(Math.random() * 2000) + 499; // Price in INR
+
+        // Generate specific product IDs to simulate specific products rather than search results
+        const productId = nanoid(8);
         
         // Create a more realistic product title
+        const genderLabel = queryGender === 'men' ? 'Men' : queryGender === 'women' ? 'Women' : 'Unisex';
         const titles = [
-          `${brand} ${color.charAt(0).toUpperCase() + color.slice(1)} ${type} for ${Math.random() > 0.5 ? 'Men' : 'Women'}`,
-          `${brand} Casual ${color} ${type}`,
-          `${brand} Formal ${color} ${type}`,
-          `${brand} Designer ${color} ${type}`,
-          `${brand} ${color} ${type} Collection`
+          `${brand} ${color.charAt(0).toUpperCase() + color.slice(1)} ${type} for ${genderLabel}`,
+          `${brand} Premium ${color} ${type} - ${genderLabel}`,
+          `${brand} Signature ${color} ${type} Collection (${genderLabel})`,
+          `${brand} Designer ${color} ${type} - ${genderLabel} Fashion`,
+          `${brand} Essential ${color} ${type} - ${genderLabel}'s Wear`
         ];
         
         const title = titles[Math.floor(Math.random() * titles.length)];
         
+        // For detailed product attributes to make each product unique
+        const attributes = [
+          `Size: ${['S', 'M', 'L', 'XL', 'XXL'][Math.floor(Math.random() * 5)]}`,
+          `Material: ${['Cotton', 'Linen', 'Polyester', 'Cotton Blend', 'Silk'][Math.floor(Math.random() * 5)]}`,
+          `Pattern: ${['Solid', 'Striped', 'Checkered', 'Printed', 'Plain'][Math.floor(Math.random() * 5)]}`,
+          `Fit: ${['Regular', 'Slim', 'Relaxed', 'Tailored', 'Oversized'][Math.floor(Math.random() * 5)]}`
+        ];
+        
         // Generate a more realistic image path - in a real app, this would be an actual product image URL
-        // For now we'll use placeholders, but in a real implementation you'd fetch actual images
-        const imageNum = Math.floor(Math.random() * 10) + 1;
         const imageWidth = 300;
         const imageHeight = 400;
         
         mockProducts.push({
-          id: nanoid(),
+          id: productId,
           title: title,
           brand: brand,
           description: `Premium quality ${color} ${type} perfect for all occasions. Made with high-quality fabric for comfort and style.`,
+          attributes: attributes,
           price: `₹${price.toLocaleString('en-IN')}`,
           rating: (Math.random() * 2 + 3).toFixed(1), // Rating between 3.0 and 5.0
           reviews: Math.floor(Math.random() * 500) + 10, // Number of reviews
           image: `/api/placeholder/${imageWidth}/${imageHeight}`, // Placeholder image
-          link: `https://www.amazon.in/s?k=${encodeURIComponent(brand + '+' + color + '+' + category)}&crid=2M096C61O4MLT&sprefix=${encodeURIComponent(color + '+' + category)}`,
-          query: query
+          link: `https://www.amazon.in/dp/${productId}`, // Specific product link with generated ID
+          color: color,
+          type: type,
+          gender: queryGender
         });
       }
     });
@@ -326,6 +491,37 @@ function FindClothes() {
     setResults(null);
     setProducts([]);
     setError(null);
+    setShowVerificationForm(false);
+    setUserPreferences({
+      gender: '',
+      items: []
+    });
+  };
+
+  // Render the clothing type options
+  const renderClothingTypeOptions = () => {
+    const clothingTypes = [
+      'shirt', 'top', 't-shirt', 'blouse', 'sweater', 'hoodie',
+      'pants', 'trousers', 'jeans', 'skirt', 'shorts',
+      'jacket', 'coat', 'outwear', 'dress', 'suit'
+    ];
+    
+    return clothingTypes.map(type => (
+      <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+    ));
+  };
+
+  // Render the color options
+  const renderColorOptions = () => {
+    const colors = [
+      'black', 'white', 'red', 'blue', 'green', 'yellow', 'purple', 
+      'pink', 'brown', 'gray', 'orange', 'navy', 'cream', 'beige', 
+      'tan', 'gold', 'silver', 'khaki', 'olive', 'maroon', 'teal'
+    ];
+    
+    return colors.map(color => (
+      <option key={color} value={color}>{color.charAt(0).toUpperCase() + color.slice(1)}</option>
+    ));
   };
 
   if (showHome) {
@@ -346,7 +542,7 @@ function FindClothes() {
     <div className="fc-find-clothes-container">
       <h2 className="fc-section-title">Find Your Perfect Style</h2>
       
-      {!loading && !results && (
+      {!loading && !results && !showVerificationForm && (
         <div className="fc-upload-section">
           <p className="fc-instructions">
             Upload 2-5 photos of outfits you like to help us understand your style preferences.
@@ -420,21 +616,113 @@ function FindClothes() {
         </div>
       )}
       
-      {results && !loading && (
+      {showVerificationForm && !loading && (
+        <div className="fc-verification-section">
+          <h3>Verify Your Style Preferences</h3>
+          <p className="fc-verification-instruction">
+            We've detected these items in your photos. Please verify and adjust as needed:
+          </p>
+          
+          {error && <p className="fc-error-message">{error}</p>}
+          
+          <div className="fc-verification-form">
+            <div className="fc-form-group">
+              <label htmlFor="gender-select">Select Gender:</label>
+              <select 
+                id="gender-select"
+                name="gender"
+                value={userPreferences.gender}
+                onChange={handlePreferenceChange}
+                className="fc-select"
+              >
+                <option value="">-- Select Gender --</option>
+                <option value="men">Men</option>
+                <option value="women">Women</option>
+                <option value="unisex">Unisex</option>
+              </select>
+            </div>
+            
+            <div className="fc-detected-items">
+              <h4>Detected Items:</h4>
+              {userPreferences.items.map((item, index) => (
+                <div key={item.id} className="fc-item-card">
+                  <div className="fc-item-toggle">
+                    <input
+                      type="checkbox"
+                      id={`toggle-item-${item.id}`}
+                      checked={item.enabled}
+                      onChange={() => toggleItemEnabled(item.id)}
+                    />
+                    <label htmlFor={`toggle-item-${item.id}`}>Include</label>
+                  </div>
+                  
+                  <div className="fc-item-fields">
+                    <div className="fc-form-group">
+                      <label>Type:</label>
+                      <select 
+                        value={item.type}
+                        onChange={(e) => handleItemChange(item.id, 'type', e.target.value)}
+                        className="fc-select fc-select-sm"
+                      >
+                        {renderClothingTypeOptions()}
+                      </select>
+                    </div>
+                    
+                    <div className="fc-form-group">
+                      <label>Color:</label>
+                      <select 
+                        value={item.color}
+                        onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
+                        className="fc-select fc-select-sm"
+                      >
+                        {renderColorOptions()}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    className="fc-remove-item-btn"
+                    onClick={() => removeItem(item.id)}
+                    aria-label="Remove item"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              
+              <button className="fc-add-item-btn" onClick={addCustomItem}>
+                + Add Another Item
+              </button>
+            </div>
+            
+            <div className="fc-action-buttons">
+              <button className="fc-analyze-btn" onClick={submitPreferences}>
+                Find Products
+              </button>
+              <button className="fc-back-btn" onClick={resetState}>
+                Start Over
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {results && !loading && !showVerificationForm && (
         <div className="fc-results-section">
           <div className="fc-style-analysis">
             <h3>Your Style Profile</h3>
+            <div className="fc-gender-tag">
+              <span className="fc-style-tag fc-gender">{userPreferences.gender.charAt(0).toUpperCase() + userPreferences.gender.slice(1)}</span>
+            </div>
             <div className="fc-style-tags">
-              {results.types.map(type => (
-                <span key={type} className="fc-style-tag">{type}</span>
-              ))}
-              {results.colors.map(color => (
-                <span key={color} className="fc-style-tag fc-color-tag" style={{backgroundColor: color === 'white' ? '#f8f9fa' : ''}}>{color}</span>
+              {userPreferences.items.filter(item => item.enabled).map(item => (
+                <span key={item.id} className="fc-style-tag">
+                  {item.color} {item.type}
+                </span>
               ))}
             </div>
             <p className="fc-analysis-description">
-              Based on your uploads, we've identified your preferences for {results.colors.join(', ')} colors 
-              and {results.types.join(', ')} styles. Here are some recommendations from Amazon.in:
+              Based on your selections, here are personalized product recommendations:
             </p>
           </div>
           
@@ -457,12 +745,21 @@ function FindClothes() {
                     <div className="fc-product-details">
                       <h4 className="fc-product-title">{product.title}</h4>
                       <div className="fc-product-brand">{product.brand}</div>
+                      <div className="fc-product-attributes">
+                        {product.attributes.map((attr, idx) => (
+                          <span key={idx} className="fc-attribute">{attr}</span>
+                        ))}
+                      </div>
                       <div className="fc-product-price">{product.price}</div>
                       <div className="fc-product-rating">
                         <span className="fc-stars">{'★'.repeat(Math.floor(parseFloat(product.rating)))}{'☆'.repeat(5 - Math.floor(parseFloat(product.rating)))}</span>
                         <span className="fc-rating-count">({product.reviews})</span>
                       </div>
-                      <div className="fc-product-tag">{product.query}</div>
+                      <div className="fc-product-tags">
+                        <span className="fc-product-tag fc-tag-color">{product.color}</span>
+                        <span className="fc-product-tag fc-tag-type">{product.type}</span>
+                        <span className="fc-product-tag fc-tag-gender">{product.gender}</span>
+                      </div>
                     </div>
                   </a>
                 ))}
@@ -473,8 +770,11 @@ function FindClothes() {
           </div>
           
           <div className="fc-action-buttons">
+            <button className="fc-back-to-prefs-btn" onClick={() => setShowVerificationForm(true)}>
+              Adjust Preferences
+            </button>
             <button className="fc-analyze-btn" onClick={resetState}>
-              Try Again
+              Start Over
             </button>
             <button className="fc-back-btn" onClick={() => setShowHome(true)}>
               Back to Home
