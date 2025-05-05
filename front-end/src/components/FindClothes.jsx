@@ -774,7 +774,638 @@ function FindClothes() {
         // Create 1-2 specific products for each query
         const numProducts = Math.floor(Math.random() * 2) + 1;
         
-        // Extract the style, pattern, color, type and gender from query
+// Extract the style, pattern, color, type and gender from query
         const parts = query.split(' ');
         let color = '';
-        let type
+        let type = '';
+        let pattern = 'solid'; // Default
+        let style = 'casual'; // Default
+        
+        // Extract information from query
+        parts.forEach(part => {
+          // Check for colors
+          const commonColors = ['red', 'blue', 'green', 'black', 'white', 'yellow', 'purple', 'pink', 'brown', 'gray', 'grey', 'navy', 'beige', 'khaki'];
+          if (commonColors.includes(part.toLowerCase())) {
+            color = part;
+          }
+          
+          // Check for patterns
+          const commonPatterns = ['striped', 'checked', 'floral', 'printed', 'plain', 'solid'];
+          if (commonPatterns.includes(part.toLowerCase())) {
+            pattern = part;
+          }
+          
+          // Check for styles
+          if (part.toLowerCase() === 'formal') {
+            style = 'formal';
+          } else if (part.toLowerCase() === 'casual') {
+            style = 'casual';
+          }
+          
+          // Check for common clothing types
+          const clothingTypes = ['shirt', 'tshirt', 't-shirt', 'pants', 'jeans', 'jacket', 'blazer', 'trouser', 'top', 'dress', 'skirt', 'saree'];
+          if (clothingTypes.includes(part.toLowerCase())) {
+            type = part;
+          }
+        });
+        
+        // Set defaults if not found
+        color = color || 'black';
+        type = type || 'shirt';
+        
+        for (let i = 0; i < numProducts; i++) {
+          const brand = brandPool[Math.floor(Math.random() * brandPool.length)];
+          const genderSizes = gender === 'women' ? sizes.women : (gender === 'men' ? sizes.men : sizes.unisex);
+          const genderFits = gender === 'women' ? fits.women : fits.men;
+          
+          // Price ranges based on item type and style
+          let minPrice = 499;
+          let maxPrice = 1999;
+          
+          if (type.includes('blazer') || type.includes('suit') || style === 'formal') {
+            minPrice = 1999;
+            maxPrice = 4999;
+          } else if (type.includes('jeans') || type.includes('pants')) {
+            minPrice = 799;
+            maxPrice = 2499;
+          } else if (type.includes('shirt') && style === 'formal') {
+            minPrice = 899;
+            maxPrice = 1999;
+          }
+          
+          const asin = generateASIN();
+          const rating = generateRating();
+          const reviewCount = generateReviewCount();
+          const material = materials[Math.floor(Math.random() * materials.length)];
+          const fit = genderFits[Math.floor(Math.random() * genderFits.length)];
+          
+          // Create realistic title
+          const titlePrefix = Math.random() > 0.5 ? brand : '';
+          const titleSuffix = Math.random() > 0.7 ? 'for ' + gender : '';
+          const formalInfix = style === 'formal' ? 'Formal ' : (style === 'casual' ? 'Casual ' : '');
+          
+          // Improve SEO in title by adding pattern and material sometimes
+          const patternInfix = Math.random() > 0.7 ? `${pattern.charAt(0).toUpperCase() + pattern.slice(1)} ` : '';
+          const materialInfix = Math.random() > 0.8 ? `${material} ` : '';
+          
+          const title = `${titlePrefix} ${formalInfix}${patternInfix}${color.charAt(0).toUpperCase() + color.slice(1)} ${materialInfix}${type.charAt(0).toUpperCase() + type.slice(1)} ${titleSuffix}`.trim();
+          
+          // Create a unique product ID based on the current timestamp plus random number
+          const productId = Date.now().toString() + Math.floor(Math.random() * 1000);
+          
+          mockProducts.push({
+            id: productId,
+            asin: asin,
+            title: title,
+            brand: brand,
+            color: color,
+            type: type,
+            pattern: pattern,
+            style: style,
+            price: getPriceInRange(minPrice, maxPrice),
+            originalPrice: Math.floor(getPriceInRange(minPrice, maxPrice) * 1.4), // Original price before discount
+            rating: rating,
+            reviewCount: reviewCount,
+            sizes: genderSizes,
+            material: material,
+            fit: fit,
+            // Use a placeholder image URL - in real implementation, this would be from Amazon
+            imageUrl: `/api/placeholder/300/400?text=${encodeURIComponent(brand + ' ' + type)}`,
+            // Create a direct link to Amazon.in product page
+            productUrl: `https://www.amazon.in/dp/${asin}`
+          });
+        }
+      }
+    });
+    
+    return mockProducts;
+  };
+
+  // Restart the process and go back to the home screen
+  const restartProcess = () => {
+    setFiles([]);
+    setImgPreviews([]);
+    setLoading(false);
+    setAnalyzing(false);
+    setError(null);
+    setResults(null);
+    setDetectedItems([]);
+    setProducts([]);
+    setShowHome(true);
+    setShowVerificationForm(false);
+    setUserPreferences({
+      gender: '',
+      style: 'all',
+      items: []
+    });
+    setFilters({
+      priceRange: [0, 10000],
+      sortBy: 'relevance',
+      category: 'all',
+    });
+    setPage(1);
+    setHasMore(true);
+  };
+
+  // Mock function for adding product to cart (would integrate with your e-commerce system)
+  const addToCart = (product) => {
+    alert(`Added ${product.title} to cart!`);
+    // In a real implementation, this would add the product to the shopping cart
+  };
+
+  // Mock function for buying product now (would integrate with your checkout system)
+  const buyNow = (product) => {
+    // In a real implementation, this would redirect to checkout with this product
+    window.open(product.productUrl, '_blank');
+  };
+
+  const fileInputRef = useRef(null);
+
+  // Home screen UI
+  const renderHomeScreen = () => (
+    <div className="home-screen">
+      <div className="bg-gradient-to-r from-purple-600 to-blue-500 p-8 text-white rounded-lg shadow-lg mb-8">
+        <h1 className="text-3xl font-bold mb-4">Find Your Perfect Outfit</h1>
+        <p className="text-lg mb-6">Upload photos of your current outfits to get personalized clothing recommendations!</p>
+        
+        <div className="bg-white/10 p-6 rounded-lg backdrop-blur-sm">
+          <h2 className="text-xl font-semibold mb-4">How it works:</h2>
+          <ol className="list-decimal list-inside space-y-2">
+            <li>Upload 2-5 photos of your outfits</li>
+            <li>Our AI analyzes your style and color preferences</li>
+            <li>Verify the detected items and preferences</li>
+            <li>Discover similar clothes you'll love!</li>
+          </ol>
+        </div>
+      </div>
+      
+      <div className="p-6 bg-white rounded-lg shadow-md">
+        <div className="file-upload-container">
+          <div className="flex flex-wrap gap-4 mb-6">
+            {imgPreviews.map((preview, index) => (
+              <div key={index} className="relative">
+                <img 
+                  src={preview} 
+                  alt={`Preview ${index + 1}`} 
+                  className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300"
+                />
+                <button 
+                  onClick={() => removeFile(index)}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            
+            {files.length < MAX_FILES && (
+              <button 
+                onClick={() => fileInputRef.current.click()} 
+                className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-blue-500 hover:text-blue-500 transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                <span className="text-sm">Add Image</span>
+              </button>
+            )}
+          </div>
+          
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            multiple
+            className="hidden"
+          />
+          
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+              <span className="block sm:inline">{error}</span>
+            </div>
+          )}
+          
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-gray-500">
+              {files.length} of {MAX_FILES} images selected 
+              <span className="ml-1">
+                (minimum {MIN_FILES} required)
+              </span>
+            </p>
+            
+            <button 
+              onClick={processImages}
+              disabled={loading || files.length < MIN_FILES}
+              className={`px-6 py-2 rounded-lg text-white font-medium ${
+                files.length < MIN_FILES || loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              {loading ? 'Processing...' : 'Analyze My Style'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Verification form UI
+  const renderVerificationForm = () => (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h2 className="text-2xl font-bold mb-6">Verify Your Style Preferences</h2>
+      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <span className="block sm:inline">{error}</span>
+        </div>
+      )}
+      
+      <div className="mb-6">
+        <label className="block text-gray-700 font-medium mb-2">Gender Preference for Clothing</label>
+        <div className="flex gap-4">
+          <label className={`flex items-center p-3 border rounded-lg cursor-pointer ${userPreferences.gender === 'men' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}>
+            <input 
+              type="radio" 
+              name="gender" 
+              value="men" 
+              checked={userPreferences.gender === 'men'} 
+              onChange={handlePreferenceChange}
+              className="mr-2" 
+            />
+            Men's Clothing
+          </label>
+          <label className={`flex items-center p-3 border rounded-lg cursor-pointer ${userPreferences.gender === 'women' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}>
+            <input 
+              type="radio" 
+              name="gender" 
+              value="women" 
+              checked={userPreferences.gender === 'women'} 
+              onChange={handlePreferenceChange}
+              className="mr-2" 
+            />
+            Women's Clothing
+          </label>
+        </div>
+      </div>
+      
+      <div className="mb-8">
+        <label className="block text-gray-700 font-medium mb-2">Style Preference</label>
+        <select 
+          name="style" 
+          value={userPreferences.style} 
+          onChange={handlePreferenceChange}
+          className="w-full p-2 border border-gray-300 rounded-md"
+        >
+          <option value="all">All Styles (Casual & Formal)</option>
+          <option value="casual">Casual Only</option>
+          <option value="formal">Formal Only</option>
+        </select>
+      </div>
+      
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-semibold">Detected Clothing Items</h3>
+          <button 
+            onClick={addCustomItem}
+            className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center text-sm"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Add Custom Item
+          </button>
+        </div>
+        
+        {userPreferences.items.length === 0 ? (
+          <p className="text-gray-500 italic">No clothing items detected. Add a custom item.</p>
+        ) : (
+          <div className="space-y-4">
+            {userPreferences.items.map((item) => (
+              <div key={item.id} className={`p-4 border rounded-lg ${item.enabled ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50'}`}>
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={item.enabled}
+                      onChange={() => toggleItemEnabled(item.id)}
+                      className="mr-3 h-5 w-5 text-blue-600"
+                    />
+                    <h4 className="font-medium text-gray-800">
+                      {item.color.charAt(0).toUpperCase() + item.color.slice(1)} {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                    </h4>
+                  </div>
+                  <button
+                    onClick={() => removeItem(item.id)}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {item.enabled && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Type</label>
+                      <select
+                        value={item.type}
+                        onChange={(e) => handleItemChange(item.id, 'type', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="shirt">Shirt</option>
+                        <option value="t-shirt">T-Shirt</option>
+                        <option value="top">Top</option>
+                        <option value="blouse">Blouse</option>
+                        <option value="pants">Pants</option>
+                        <option value="jeans">Jeans</option>
+                        <option value="trousers">Trousers</option>
+                        <option value="skirt">Skirt</option>
+                        <option value="dress">Dress</option>
+                        <option value="jacket">Jacket</option>
+                        <option value="sweater">Sweater</option>
+                        <option value="blazer">Blazer</option>
+                        <option value="coat">Coat</option>
+                        <option value="saree">Saree</option>
+                        <option value="kurta">Kurta</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Color</label>
+                      <select
+                        value={item.color}
+                        onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="black">Black</option>
+                        <option value="white">White</option>
+                        <option value="blue">Blue</option>
+                        <option value="red">Red</option>
+                        <option value="green">Green</option>
+                        <option value="yellow">Yellow</option>
+                        <option value="pink">Pink</option>
+                        <option value="purple">Purple</option>
+                        <option value="gray">Gray</option>
+                        <option value="brown">Brown</option>
+                        <option value="navy">Navy</option>
+                        <option value="beige">Beige</option>
+                        <option value="khaki">Khaki</option>
+                        <option value="olive">Olive</option>
+                        <option value="maroon">Maroon</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Style</label>
+                      <select
+                        value={item.subtype}
+                        onChange={(e) => handleItemChange(item.id, 'subtype', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="versatile">Versatile</option>
+                        <option value="formal">Formal</option>
+                        <option value="casual">Casual</option>
+                        <option value="athletic">Athletic</option>
+                        <option value="party">Party Wear</option>
+                        <option value="ethnic">Ethnic</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Sleeve Length</label>
+                      <select
+                        value={item.sleeveLength}
+                        onChange={(e) => handleItemChange(item.id, 'sleeveLength', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="any">Any Sleeve</option>
+                        <option value="long">Long Sleeve</option>
+                        <option value="short">Short Sleeve</option>
+                        <option value="sleeveless">Sleeveless</option>
+                        <option value="half">Half Sleeve</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Pattern</label>
+                      <select
+                        value={item.pattern}
+                        onChange={(e) => handleItemChange(item.id, 'pattern', e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="solid">Solid</option>
+                        <option value="striped">Striped</option>
+                        <option value="checked">Checked</option>
+                        <option value="plaid">Plaid</option>
+                        <option value="floral">Floral</option>
+                        <option value="printed">Printed</option>
+                        <option value="graphic">Graphic</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      <div className="flex justify-between">
+        <button
+          onClick={restartProcess}
+          className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100"
+        >
+          Start Over
+        </button>
+        
+        <button
+          onClick={submitPreferences}
+          disabled={loading}
+          className={`px-6 py-2 rounded-lg text-white font-medium ${
+            loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+          }`}
+        >
+          {loading ? 'Finding Products...' : 'Find Products'}
+        </button>
+      </div>
+    </div>
+  );
+
+  // Product listing UI
+  const renderProductListing = () => (
+    <div className="product-listing">
+      <div className="mb-6 flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Recommended Products</h2>
+        
+        <button
+          onClick={restartProcess}
+          className="px-4 py-2 text-blue-600 border border-blue-500 rounded-lg hover:bg-blue-50"
+        >
+          New Recommendation
+        </button>
+      </div>
+      
+      <div className="mb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-gray-700 font-medium mb-2">Sort By</label>
+          <select
+            value={filters.sortBy}
+            onChange={(e) => handleFilterChange('sortBy', e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md"
+          >
+            <option value="relevance">Relevance</option>
+            <option value="price_low">Price: Low to High</option>
+            <option value="price_high">Price: High to Low</option>
+            <option value="rating">Customer Rating</option>
+            <option value="popular">Popularity</option>
+          </select>
+        </div>
+        
+        <div>
+          <label className="block text-gray-700 font-medium mb-2">Category</label>
+          <select
+            value={filters.category}
+            onChange={(e) => handleFilterChange('category', e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md"
+          >
+            <option value="all">All Categories</option>
+            <option value="tops">Tops</option>
+            <option value="bottoms">Bottoms</option>
+            <option value="dresses">Dresses</option>
+            <option value="outerwear">Outerwear</option>
+            <option value="ethnic">Ethnic Wear</option>
+          </select>
+        </div>
+        
+        <div>
+          <label className="block text-gray-700 font-medium mb-2">Price Range</label>
+          <div className="flex items-center gap-2">
+            <span>₹{filters.priceRange[0]}</span>
+            <input
+              type="range"
+              min="0"
+              max="10000"
+              step="500"
+              value={filters.priceRange[1]}
+              onChange={(e) => handleFilterChange('priceRange', [filters.priceRange[0], parseInt(e.target.value)])}
+              className="flex-grow"
+            />
+            <span>₹{filters.priceRange[1]}</span>
+          </div>
+        </div>
+      </div>
+      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <span className="block sm:inline">{error}</span>
+        </div>
+      )}
+      
+      {products.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500 text-lg">No products found matching your criteria. Try adjusting your filters.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          {products.map((product) => (
+            <div key={product.id} className="border rounded-lg overflow-hidden hover:shadow-lg transition bg-white">
+              <div className="h-64 overflow-hidden relative">
+                <img 
+                  src={product.imageUrl} 
+                  alt={product.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-0 right-0 bg-yellow-400 text-gray-800 px-2 py-1 rounded-tl-md font-medium flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  {product.rating}
+                </div>
+              </div>
+              
+              <div className="p-4">
+                <h3 className="font-medium text-gray-900 mb-1 line-clamp-2">{product.title}</h3>
+                <p className="text-sm text-gray-500 mb-2">{product.brand}</p>
+                
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-xl font-bold text-gray-900">₹{product.price}</span>
+                    {product.originalPrice > product.price && (
+                      <span className="text-sm text-gray-500 line-through ml-2">₹{product.originalPrice}</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500">{product.reviewCount} reviews</span>
+                </div>
+                
+                <div className="mb-3">
+                  <span className="text-sm text-gray-700 font-medium">Material: </span>
+                  <span className="text-sm text-gray-600">{product.material}</span>
+                </div>
+                
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {product.sizes.map((size, idx) => (
+                    <span key={idx} className="px-2 py-1 text-xs border border-gray-300 rounded-md">{size}</span>
+                  ))}
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => addToCart(product)}
+                    className="flex-1 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                  >
+                    Add to Cart
+                  </button>
+                  <button
+                    onClick={() => buyNow(product)}
+                    className="flex-1 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 transition"
+                  >
+                    Buy Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {hasMore && (
+        <div className="flex justify-center pb-8">
+          <button
+            onClick={loadMoreProducts}
+            disabled={isLoading}
+            className={`px-6 py-2 rounded-lg ${
+              isLoading ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            {isLoading ? 'Loading...' : 'Load More Products'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="find-clothes-container max-w-6xl mx-auto p-4">
+      {showHome && renderHomeScreen()}
+      
+      {showVerificationForm && renderVerificationForm()}
+      
+      {!showHome && !showVerificationForm && products.length > 0 && renderProductListing()}
+      
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-lg text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <h3 className="text-xl font-medium text-gray-900 mb-2">
+              {analyzing ? 'Analyzing Your Style...' : 'Processing Images...'}
+            </h3>
+            <p className="text-gray-600">This may take a moment</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default FindClothes;
