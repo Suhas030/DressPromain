@@ -814,4 +814,86 @@ function FindClothes() {
                       </select>
                     </div>
                     
-                    <div className="fc-
+                    <div className="fc-form-group">
+                      <label>Color:</label>
+                      <select 
+                        value={item.color}
+                        onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
+                        className="fc-select fc-select-sm"
+                      >
+                        {renderColorOptions()}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    className="fc-remove-item-btn"
+                    onClick={() => removeItem(item.id)}
+                    aria-label="Remove item"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              
+              <button 
+                className="fc-add-item-btn"
+                onClick={addCustomItem}
+              >
+                + Add Custom Item
+              </button>
+            </div>
+            
+            <div className="fc-action-buttons">
+              <button 
+                className="fc-submit-btn" 
+                onClick={submitPreferences}
+                disabled={!userPreferences.gender || userPreferences.items.filter(item => item.enabled).length === 0}
+              >
+                Get Recommendations
+              </button>
+              <button 
+                className="fc-back-btn" 
+                onClick={() => {
+                  setShowVerificationForm(false);
+                  setResults(null);
+                }}
+              >
+                Back to Images
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {products.length > 0 && !showVerificationForm && !loading && (
+        <div className="fc-results-section">
+          <h3>Recommendations For You</h3>
+          
+          {apiStatus.error && (
+            <p className="fc-api-note">Note: {apiStatus.error}</p>
+          )}
+          
+          <ProductFilters 
+            products={products}
+            userPreferences={userPreferences}
+            onFilterChange={(filteredProducts) => setProducts(filteredProducts)}
+          />
+          
+          <ProductList products={products} />
+          
+          <div className="fc-action-buttons">
+            <button 
+              className="fc-try-again-btn" 
+              onClick={resetState}
+            >
+              Try Again with New Photos
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default FindClothes;
