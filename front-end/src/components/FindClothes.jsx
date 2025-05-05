@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { nanoid } from 'nanoid';
-import './FindClothes.css';
+// import './FindClothes.css';
 
 function FindClothes() {
   const [files, setFiles] = useState([]);
