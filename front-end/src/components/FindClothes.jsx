@@ -157,7 +157,7 @@ function FindClothes() {
       setUserPreferences({
         gender: '', // Will be selected by user
         style: 'all', // Default style
-        items: items
+        items: items  // Include ALL detected items, not just one
       });
       
       // Show verification form
@@ -173,25 +173,26 @@ function FindClothes() {
 
   // Prepare detected items for the verification form with enhanced attributes
   const prepareDetectedItems = (styleAnalysis) => {
+    // Changed this to keep all items, but ensure they're unique by type+color+attributes
     const uniqueItems = [];
-    const seenTypes = new Set();
+    const seenCombos = new Set();
     
     styleAnalysis.detectedItems.forEach(item => {
-      // Create a unique identifier for each type of clothing
-      const typeKey = item.type.toLowerCase();
+      // Create a unique identifier for each clothing item by combining key attributes
+      const typeColor = `${item.type}-${item.colors[0] || 'neutral'}-${item.pattern || 'solid'}`;
       
-      // Only add unique clothing types
-      if (!seenTypes.has(typeKey)) {
-        seenTypes.add(typeKey);
+      // Only add unique combinations
+      if (!seenCombos.has(typeColor)) {
+        seenCombos.add(typeColor);
         
         uniqueItems.push({
           id: nanoid(),
           type: item.type,
-          color: item.colors[0] || 'neutral', // Default to first detected color
-          subtype: detectSubtype(item.type), // Add subtype like formal/casual
-          sleeveLength: detectSleeveLength(item.type, item.attributes || []), // Add sleeve length if applicable
-          pattern: item.pattern || 'solid', // Default to solid if not detected
-          enabled: true
+          color: item.colors[0] || 'neutral',
+          subtype: detectSubtype(item.type, item.attributes || []),
+          sleeveLength: detectSleeveLength(item.type, item.attributes || []),
+          pattern: item.pattern || 'solid',
+          enabled: true  // All items enabled by default
         });
       }
     });
@@ -199,8 +200,16 @@ function FindClothes() {
     return uniqueItems;
   };
 
-  // Detect subtype based on clothing type
-  const detectSubtype = (type) => {
+  // Detect subtype based on clothing type and attributes
+  const detectSubtype = (type, attributes = []) => {
+    // Check attributes first - they are more specific
+    if (attributes.some(attr => attr === 'formal')) {
+      return 'formal';
+    } else if (attributes.some(attr => attr === 'casual')) {
+      return 'casual';
+    }
+    
+    // If no clear attributes, infer from the type
     const formalItems = ['suit', 'blazer', 'formal shirt', 'dress shirt', 'formal pants', 'formal trousers'];
     const casualItems = ['t-shirt', 'jeans', 'hoodie', 'sweatshirt', 'shorts', 'casual'];
     
@@ -216,24 +225,16 @@ function FindClothes() {
   };
 
   // Detect sleeve length based on type and attributes
-  const detectSleeveLength = (type, attributes) => {
-    const longSleeveIndicators = ['long sleeve', 'full sleeve', 'full-sleeve', 'winter'];
-    const shortSleeveIndicators = ['short sleeve', 'half sleeve', 'short-sleeve', 'summer'];
-    
-    // Convert type and attributes to lowercase strings for comparison
-    const lowercaseType = type.toLowerCase();
-    const lowercaseAttributes = attributes.map(attr => attr.toLowerCase());
-    
-    // Check if any indicator is found in the type or attributes
-    if (longSleeveIndicators.some(indicator => 
-        lowercaseType.includes(indicator) || 
-        lowercaseAttributes.some(attr => attr.includes(indicator)))) {
+  const detectSleeveLength = (type, attributes = []) => {
+    // Check attributes first
+    if (attributes.some(attr => attr.includes('long sleeve') || attr.includes('full sleeve'))) {
       return 'long';
-    } else if (shortSleeveIndicators.some(indicator => 
-        lowercaseType.includes(indicator) || 
-        lowercaseAttributes.some(attr => attr.includes(indicator)))) {
+    } else if (attributes.some(attr => attr.includes('short sleeve') || attr.includes('half sleeve'))) {
       return 'short';
     }
+    
+    // Convert type to lowercase for comparison
+    const lowercaseType = type.toLowerCase();
     
     // Default value based on the type of clothing
     if (['t-shirt', 'polo', 'tee'].some(item => lowercaseType.includes(item))) {
@@ -776,8 +777,4 @@ function FindClothes() {
         // Extract the style, pattern, color, type and gender from query
         const parts = query.split(' ');
         let color = '';
-        let type = '';
-        let queryGender = gender;
-        let subtype = '';
-        let pattern = '';
-        let sleeveLength = '';
+        let type
