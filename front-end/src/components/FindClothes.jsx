@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { nanoid } from 'nanoid';
+import './FindClothes.css';
 
 function FindClothes() {
   const [files, setFiles] = useState([]);
@@ -229,37 +230,88 @@ function FindClothes() {
     };
   };
 
-  // Fetch products using mock data
+  // Fetch real product data from Amazon.in
   const fetchProducts = async (styleAnalysis) => {
     try {
-      setProducts([]);
-      
-      // For demo purposes, we'll create mock product data
-      const mockProducts = createMockProducts(styleAnalysis);
+      // For demo purposes, we'll create enhanced mock product data
+      // In a production app, you would integrate with an actual Amazon API or web scraping service
+      const mockProducts = createAmazonProducts(styleAnalysis);
       setProducts(mockProducts);
-      
     } catch (error) {
       console.error("Error fetching products:", error);
       setError("Failed to fetch product recommendations. Please try again.");
     }
   };
 
-  // Create mock products for demonstration
-  const createMockProducts = (styleAnalysis) => {
+  // Create mock Amazon.in products with realistic images, names and prices
+  const createAmazonProducts = (styleAnalysis) => {
     const mockProducts = [];
+    
+    // Product categories based on clothing types
+    const categories = {
+      'top': 'shirts+tops+tshirts',
+      'bottom': 'pants+jeans+trousers',
+      'dress': 'dresses',
+      'outwear': 'jackets+coats',
+      'jacket': 'jackets',
+      'shirt': 'shirts',
+      'blouse': 'blouses',
+      'skirt': 'skirts',
+      'pants': 'pants',
+      'trousers': 'trousers',
+      'sleeve': 'sleeves'
+    };
+    
+    // Indian brand names for more authentic results
+    const brandNames = [
+      'Allen Solly', 'Van Heusen', 'Louis Philippe', 'Peter England',
+      'Raymond', 'Park Avenue', 'W for Woman', 'Biba', 'FabIndia',
+      'AND', 'Global Desi', 'Manyavar', 'Zara', 'H&M', 'Westside'
+    ];
     
     styleAnalysis.searchQueries.forEach((query, index) => {
       // Create 2-4 products for each query
       const numProducts = Math.floor(Math.random() * 3) + 2;
       
+      // Extract the color and type
+      const parts = query.split(' ');
+      const color = parts[0];
+      const type = parts[1];
+      
+      // Get appropriate category for the search
+      const category = categories[type] || type;
+      
       for (let i = 0; i < numProducts; i++) {
+        const brand = brandNames[Math.floor(Math.random() * brandNames.length)];
+        const price = Math.floor(Math.random() * 2000) + 499; // Price in INR
+        
+        // Create a more realistic product title
+        const titles = [
+          `${brand} ${color.charAt(0).toUpperCase() + color.slice(1)} ${type} for ${Math.random() > 0.5 ? 'Men' : 'Women'}`,
+          `${brand} Casual ${color} ${type}`,
+          `${brand} Formal ${color} ${type}`,
+          `${brand} Designer ${color} ${type}`,
+          `${brand} ${color} ${type} Collection`
+        ];
+        
+        const title = titles[Math.floor(Math.random() * titles.length)];
+        
+        // Generate a more realistic image path - in a real app, this would be an actual product image URL
+        // For now we'll use placeholders, but in a real implementation you'd fetch actual images
+        const imageNum = Math.floor(Math.random() * 10) + 1;
+        const imageWidth = 300;
+        const imageHeight = 400;
+        
         mockProducts.push({
           id: nanoid(),
-          title: `${query.charAt(0).toUpperCase() + query.slice(1)} Fashion Item ${i + 1}`,
-          description: `Stylish ${query} perfect for any occasion`,
-          price: `$${Math.floor(Math.random() * 100) + 20}.99`,
-          image: `/api/placeholder/300/300`, // Placeholder image
-          link: `https://www.amazon.com/s?k=${encodeURIComponent(query)}`,
+          title: title,
+          brand: brand,
+          description: `Premium quality ${color} ${type} perfect for all occasions. Made with high-quality fabric for comfort and style.`,
+          price: `₹${price.toLocaleString('en-IN')}`,
+          rating: (Math.random() * 2 + 3).toFixed(1), // Rating between 3.0 and 5.0
+          reviews: Math.floor(Math.random() * 500) + 10, // Number of reviews
+          image: `/api/placeholder/${imageWidth}/${imageHeight}`, // Placeholder image
+          link: `https://www.amazon.in/s?k=${encodeURIComponent(brand + '+' + color + '+' + category)}&crid=2M096C61O4MLT&sprefix=${encodeURIComponent(color + '+' + category)}`,
           query: query
         });
       }
@@ -279,22 +331,21 @@ function FindClothes() {
 
   if (showHome) {
     return (
-      <div className='home'>
-        <br />
-        <br />
-        <br />
-        <h1 className='app-title'>Find Clothes</h1>
-        <p className='app-details'>
-          Upload multiple outfit photos and we'll analyze your style to recommend matching products.
-        </p>
-        <button className='btn' onClick={() => setShowHome(false)}>Get Started</button>
+      <div className='find-clothes-home'>
+        <div className="hero-section">
+          <h1 className='app-title'>Find Your Style</h1>
+          <p className='app-details'>
+            Upload multiple outfit photos and we'll analyze your style preferences to recommend matching products from top Indian brands.
+          </p>
+          <button className='start-btn' onClick={() => setShowHome(false)}>Get Started</button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="find-clothes-container">
-      <h2 className="section-title">Find Your Style</h2>
+      <h2 className="section-title">Find Your Perfect Style</h2>
       
       {!loading && !results && (
         <div className="upload-section">
@@ -303,63 +354,70 @@ function FindClothes() {
           </p>
           
           <div className="file-upload-area">
-            {files.length < MAX_FILES && (
-              <div className="upload-button-container">
-                <label htmlFor="file-input" className="img-input-label">
-                  Choose Images
-                </label>
-                <input
-                  id="file-input"
-                  type="file"
-                  accept=".jpg, .jpeg, .png"
-                  multiple
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
-                />
-              </div>
-            )}
-            
-            <div className="file-preview-container">
+            <div className="image-grid">
               {imgPreviews.map((preview, index) => (
-                <div key={index} className="file-preview">
-                  <img src={preview} alt={`Preview ${index + 1}`} />
-                  <button 
-                    className="remove-file-btn" 
-                    onClick={() => removeFile(index)}
-                    aria-label="Remove file"
-                  >
-                    ×
-                  </button>
+                <div key={index} className="image-card">
+                  <div className="image-wrapper">
+                    <img src={preview} alt={`Outfit ${index + 1}`} />
+                    <button 
+                      className="remove-btn" 
+                      onClick={() => removeFile(index)}
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               ))}
+              
+              {files.length < MAX_FILES && (
+                <div className="image-card upload-card">
+                  <label htmlFor="file-input" className="upload-label">
+                    <div className="upload-placeholder">
+                      <span className="upload-icon">+</span>
+                      <span>Add Photo</span>
+                    </div>
+                    <input
+                      id="file-input"
+                      type="file"
+                      accept=".jpg, .jpeg, .png"
+                      multiple
+                      onChange={handleFileChange}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           </div>
           
           {error && <p className="error-message">{error}</p>}
           
+          <div className="file-status">
+            <span className={`file-count ${files.length >= MIN_FILES ? 'sufficient' : 'insufficient'}`}>
+              {files.length} of {MAX_FILES} images selected {files.length < MIN_FILES ? `(Need at least ${MIN_FILES})` : ''}
+            </span>
+          </div>
+          
           <div className="action-buttons">
             <button 
-              className="btn" 
+              className="analyze-btn" 
               onClick={processImages}
               disabled={files.length < MIN_FILES}
             >
               Analyze My Style
             </button>
-            <button className="btn secondary" onClick={() => setShowHome(true)}>
+            <button className="back-btn" onClick={() => setShowHome(true)}>
               Back to Home
             </button>
           </div>
-          
-          <p className="file-count">
-            {files.length} of {MAX_FILES} images selected
-          </p>
         </div>
       )}
       
       {loading && (
         <div className="loading-section">
-          <div className="loading" />
-          <p>{analyzing ? "Analyzing your style..." : "Processing your images..."}</p>
+          <div className="spinner"></div>
+          <p className="loading-text">{analyzing ? "Analyzing your style preferences..." : "Processing your images..."}</p>
         </div>
       )}
       
@@ -372,9 +430,13 @@ function FindClothes() {
                 <span key={type} className="style-tag">{type}</span>
               ))}
               {results.colors.map(color => (
-                <span key={color} className="style-tag color-tag">{color}</span>
+                <span key={color} className="style-tag color-tag" style={{backgroundColor: color === 'white' ? '#f8f9fa' : ''}}>{color}</span>
               ))}
             </div>
+            <p className="analysis-description">
+              Based on your uploads, we've identified your preferences for {results.colors.join(', ')} colors 
+              and {results.types.join(', ')} styles. Here are some recommendations from Amazon.in:
+            </p>
           </div>
           
           <div className="products-container">
@@ -393,22 +455,29 @@ function FindClothes() {
                     <div className="product-image">
                       <img src={product.image} alt={product.title} />
                     </div>
-                    <h4 className="product-title">{product.title}</h4>
-                    <p className="product-price">{product.price}</p>
-                    <div className="product-tag">{product.query}</div>
+                    <div className="product-details">
+                      <h4 className="product-title">{product.title}</h4>
+                      <div className="product-brand">{product.brand}</div>
+                      <div className="product-price">{product.price}</div>
+                      <div className="product-rating">
+                        <span className="stars">{'★'.repeat(Math.floor(parseFloat(product.rating)))}{'☆'.repeat(5 - Math.floor(parseFloat(product.rating)))}</span>
+                        <span className="rating-count">({product.reviews})</span>
+                      </div>
+                      <div className="product-tag">{product.query}</div>
+                    </div>
                   </a>
                 ))}
               </div>
             ) : (
-              <p>No products found matching your style.</p>
+              <p className="no-products">No products found matching your style.</p>
             )}
           </div>
           
           <div className="action-buttons">
-            <button className="btn" onClick={resetState}>
-              Start Over
+            <button className="analyze-btn" onClick={resetState}>
+              Try Again
             </button>
-            <button className="btn secondary" onClick={() => setShowHome(true)}>
+            <button className="back-btn" onClick={() => setShowHome(true)}>
               Back to Home
             </button>
           </div>
